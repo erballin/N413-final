@@ -23,19 +23,18 @@ register_activation_hook(__FILE__, function () {
 /* ======================================================
    2. CONTENT RESTRICTION
 ========================================================= */
-
-
 // Handle content restriction for premium posts
 add_filter('the_content', function ($content) {
+
+  $badge = '<div class="premium-badge">🔒 Premium Content</div>';
+  $freeBadge = '<div class="premium-badge">🔓 Preview Content</div>';
+  $adminBadge = '<div class="premium-badge">🔓 Admin Override</div>';
+  $paidBadge = '<div class="premium-badge">⭐ Premium Access</div>';
 
   if (!is_singular('premium_post')) {
     return $content;
   }
 
-  $badge = '<div class="premium-badge">🔒 Premium Content</div>';
-  $freeBadge = '<div class="premium-badge">🔓 Unlocked Content</div>';
-  $adminBadge = '<div class="premium-badge">🔓 Admin Override</div>';
-  $paidBadge = '<div class="premium-badge">⭐ Premium Access</div>';
 
   if (!is_user_logged_in()) {
     return $badge . '<p>Please log in to view this post.</p>';
@@ -44,6 +43,7 @@ add_filter('the_content', function ($content) {
   // Get post requirement
   $requires_premium = get_post_meta(get_the_ID(), '_requires_premium', true);
   var_dump($requires_premium);
+  var_dump(current_user_can('view_premium_content'));
 
   // Premium check
   if (current_user_can('view_premium_content')) {
@@ -63,6 +63,38 @@ add_filter('the_content', function ($content) {
 
   return $badge . '<p>This content is for Premium users only.</p>';
 });
+
+
+// Handle excerpt restriction for premium posts
+add_filter(
+  'get_the_excerpt',
+  function ($content) {
+    // If not a premium post, just return the excerpt as normal
+    if ('premium_post' !== get_post_type()) {
+      return $content;
+    }
+
+    $premiumBadge = '<div class="premium-badge">🔒 Premium Content</div> | ';
+    $freeBadge = '<div class="premium-badge">🔓 Preview Content</div> | ';
+    $adminBadge = '<div class="premium-badge">🔓 Admin Override</div> | ';
+    $paidBadge = '<div class="premium-badge">⭐ Premium Access</div> | ';
+
+
+    // Get post requirement
+    $requires_premium = get_post_meta(get_the_ID(), '_requires_premium', true);
+
+    // Premium check
+    if (current_user_can('view_premium_content')) {
+      return $paidBadge . $content;
+    }
+
+    if (!$requires_premium) {
+      return $freeBadge . $content;
+    }
+
+    return $premiumBadge . '| <p style="display: block"> |This content is for Premium users only.</p>';
+  }
+);
 
 /* ======================================================
    3. AJAX: UPGRADE USER TO PREMIUM
@@ -165,19 +197,16 @@ add_action('init', function () {
     'show_in_rest' => true,
     'default' => true, // Default to true (requires premium access) for new posts
   ]);
-});
-
-
-// Show premium posts in main query
-add_filter('query_loop_block_query_vars', function ($query) {
-
-  if (!empty($query['post_type'])) {
-    $query['post_type'] = array('post', 'premium_post');
+  $role = get_role('premium_user');
+  if ($role && !$role->has_cap('view_premium_content')) {
+    $role->add_cap('view_premium_content');
   }
-
-  return $query;
 });
 
+
+/* ======================================================
+   4b. CUSTOM POST TYPE META FIELD FOR PREMIUM REQUIREMENT
+========================================================= */
 // Create meta box for premium settings
 add_action('add_meta_boxes', function () {
   add_meta_box(
@@ -192,21 +221,17 @@ add_action('add_meta_boxes', function () {
 
 function render_premium_meta_box($post)
 {
-  $value = get_post_meta($post->ID, '_requires_premium', true);
-
-  if ($value === '') {
-    $value = true; // default to checked
-  }
+  $value = (bool) get_post_meta($post->ID, '_requires_premium', true);
 
   wp_nonce_field('save_premium_meta', 'premium_meta_nonce');
-
 ?>
   <label>
-    <input type="checkbox" name="requires_premium" value="1" <?php checked($value, '1'); ?> />
+    <input type="checkbox" name="requires_premium" <?php checked($value); ?> />
     Requires Premium Access
   </label>
 <?php
 }
+
 add_action('save_post_premium_post', function ($post_id) {
 
   // Nonce check
