@@ -92,7 +92,7 @@ add_filter(
       return $freeBadge . $content;
     }
 
-    return $premiumBadge . '| <p style="display: block"> |This content is for Premium users only.</p>';
+    return $premiumBadge . '<p style="display: block"> This content is for Premium users only.</p>';
   }
 );
 
